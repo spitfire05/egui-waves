@@ -1,5 +1,5 @@
 use rustfft::{num_complex::Complex, FftPlanner};
-use wavegen::{sine, square, PeriodicFunction, Waveform};
+use wavegen::{sawtooth, sine, square, PeriodicFunction, Waveform};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -13,8 +13,8 @@ pub struct Main {
 impl Default for Main {
     fn default() -> Self {
         Self {
-            sample_rate: 8000.0,
-            n_samples: 8000,
+            sample_rate: 3000.0,
+            n_samples: 1000,
             components: vec![],
         }
     }
@@ -92,6 +92,18 @@ impl eframe::App for Main {
                         phase: 0.0,
                     },
                     name: "Square".to_string(),
+                    enabled: true,
+                });
+            }
+
+            if ui.button("Sawtooth").clicked() {
+                components.push(ComponentWrapper {
+                    inner: Component::Sawtooth {
+                        frequency: 100.0,
+                        amplitude: 1.0,
+                        phase: 0.0,
+                    },
+                    name: "Sawtooth".to_string(),
                     enabled: true,
                 });
             }
@@ -225,6 +237,11 @@ enum Component {
         amplitude: f64,
         phase: f64,
     },
+    Sawtooth {
+        frequency: f64,
+        amplitude: f64,
+        phase: f64,
+    },
 }
 
 impl Component {
@@ -240,6 +257,11 @@ impl Component {
                 amplitude,
                 phase,
             } => square!(*frequency, *amplitude, *phase),
+            Component::Sawtooth {
+                frequency,
+                amplitude,
+                phase,
+            } => sawtooth!(*frequency, *amplitude, *phase),
         }
     }
 
@@ -251,6 +273,11 @@ impl Component {
                 phase: _,
             }
             | Component::Sine {
+                frequency,
+                amplitude: _,
+                phase: _,
+            }
+            | Component::Sawtooth {
                 frequency,
                 amplitude: _,
                 phase: _,
@@ -287,7 +314,28 @@ impl Component {
                 phase,
             } => {
                 ui.vertical(|ui| {
-                    ui.label("Sine");
+                    ui.label(egui::RichText::new("Square").strong());
+                    ui.add(
+                        egui::DragValue::new(frequency)
+                            .clamp_range(f64::MIN_POSITIVE..=f64::MAX)
+                            .prefix("f: ")
+                            .suffix(" Hz"),
+                    );
+                    ui.add(
+                        egui::DragValue::new(amplitude)
+                            .clamp_range(0.0..=f64::MAX)
+                            .prefix("A: "),
+                    );
+                    ui.add(egui::Slider::new(phase, 0.0..=1.0).prefix("φ: "));
+                });
+            }
+            Component::Sawtooth {
+                frequency,
+                amplitude,
+                phase,
+            } => {
+                ui.vertical(|ui| {
+                    ui.label(egui::RichText::new("Sawtooth").strong());
                     ui.add(
                         egui::DragValue::new(frequency)
                             .clamp_range(f64::MIN_POSITIVE..=f64::MAX)
