@@ -6,7 +6,7 @@ use wavegen::{sawtooth, sine, square, PeriodicFunction, Waveform};
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct Main {
     sample_rate: f64,
-    n_samples: usize,
+    n_samples: u16,
     components: Vec<ComponentWrapper>,
 }
 
@@ -160,11 +160,12 @@ impl eframe::App for Main {
                 components.iter().map(|c| c.inner.build()).collect(),
             );
 
+            #[allow(clippy::cast_precision_loss)]
             let points: egui::plot::PlotPoints = waveform
                 .into_iter()
                 .enumerate()
                 .map(|(i, x)| [i as f64 / *sample_rate, x])
-                .take(*n_samples)
+                .take(*n_samples as usize)
                 .collect();
             let line = egui::plot::Line::new(points);
             egui::plot::Plot::new("wf_plot")
@@ -174,20 +175,26 @@ impl eframe::App for Main {
             ui.heading("Spectrum");
 
             let mut planner = FftPlanner::new();
-            let fft = planner.plan_fft_forward(*n_samples);
+            let fft = planner.plan_fft_forward(*n_samples as usize);
 
             let mut buffer: Vec<_> = waveform
                 .into_iter()
                 .map(|s| Complex::new(s, 0.0))
-                .take(*n_samples)
+                .take(*n_samples as usize)
                 .collect();
             fft.process(&mut buffer);
             let fmax = *sample_rate / 2.56;
-            let spectrum_resolution = *sample_rate / *n_samples as f64;
+            let spectrum_resolution = *sample_rate / f64::from(*n_samples);
+            #[allow(clippy::cast_precision_loss)]
             let points: egui::plot::PlotPoints = buffer
                 .iter()
                 .enumerate()
-                .map(|(i, c)| [i as f64 * spectrum_resolution, c.norm() / *n_samples as f64])
+                .map(|(i, c)| {
+                    [
+                        i as f64 * spectrum_resolution,
+                        c.norm() / f64::from(*n_samples),
+                    ]
+                })
                 .take_while(|[f, _]| *f < fmax)
                 .collect();
             let line = egui::plot::Line::new(points);
