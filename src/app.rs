@@ -130,8 +130,6 @@ impl eframe::App for Main {
             })
         });
 
-        // egui::Window::new("Components").
-
         egui::SidePanel::right("right_panel").show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 for c in components.iter_mut().filter(|c| c.enabled) {
@@ -140,7 +138,7 @@ impl eframe::App for Main {
                         .outer_margin(10.0)
                         .show(ui, |ui| {
                             ui.vertical(|ui| {
-                                c.render(ui);
+                                c.show(ui);
                                 if ui.button("❌ Remove").clicked() {
                                     c.enabled = false;
                                 }
@@ -226,7 +224,7 @@ struct ComponentWrapper {
 }
 
 impl ComponentWrapper {
-    pub fn render(&mut self, ui: &mut egui::Ui) {
+    pub fn show(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             let label = ui.label("Name: ");
             ui.text_edit_singleline(&mut self.name)
@@ -234,7 +232,7 @@ impl ComponentWrapper {
                                                       This is currently only used for spectrum marker");
         });
         ui.vertical(|ui| {
-            self.inner.render(ui);
+            self.inner.show(ui);
         });
     }
 }
@@ -299,71 +297,47 @@ impl Component {
         }
     }
 
-    pub fn render(&mut self, ui: &mut egui::Ui) {
+    fn show_control(
+        ui: &mut egui::Ui,
+        name: impl Into<String>,
+        frequency: &mut f64,
+        amplitude: &mut f64,
+        phase: &mut f64,
+    ) {
+        ui.vertical(|ui| {
+            ui.label(egui::RichText::new(name).strong());
+            ui.add(
+                egui::DragValue::new(frequency)
+                    .clamp_range(1e-2..=f64::MAX)
+                    .prefix("f: ")
+                    .suffix(" Hz"),
+            );
+            ui.add(
+                egui::DragValue::new(amplitude)
+                    .clamp_range(0.0..=f64::MAX)
+                    .prefix("A: "),
+            );
+            ui.add(egui::Slider::new(phase, 0.0..=1.0).prefix("φ: "));
+        });
+    }
+
+    pub fn show(&mut self, ui: &mut egui::Ui) {
         match self {
             Component::Sine {
                 frequency,
                 amplitude,
                 phase,
-            } => {
-                ui.vertical(|ui| {
-                    ui.label(egui::RichText::new("Sine").strong());
-                    ui.add(
-                        egui::DragValue::new(frequency)
-                            .clamp_range(1e-2..=f64::MAX)
-                            .prefix("f: ")
-                            .suffix(" Hz"),
-                    );
-                    ui.add(
-                        egui::DragValue::new(amplitude)
-                            .clamp_range(0.0..=f64::MAX)
-                            .prefix("A: "),
-                    );
-                    ui.add(egui::Slider::new(phase, 0.0..=1.0).prefix("φ: "));
-                });
-            }
+            } => Self::show_control(ui, "Sine", frequency, amplitude, phase),
             Component::Square {
                 frequency,
                 amplitude,
                 phase,
-            } => {
-                ui.vertical(|ui| {
-                    ui.label(egui::RichText::new("Square").strong());
-                    ui.add(
-                        egui::DragValue::new(frequency)
-                            .clamp_range(1e-2..=f64::MAX)
-                            .prefix("f: ")
-                            .suffix(" Hz"),
-                    );
-                    ui.add(
-                        egui::DragValue::new(amplitude)
-                            .clamp_range(0.0..=f64::MAX)
-                            .prefix("A: "),
-                    );
-                    ui.add(egui::Slider::new(phase, 0.0..=1.0).prefix("φ: "));
-                });
-            }
+            } => Self::show_control(ui, "Square", frequency, amplitude, phase),
             Component::Sawtooth {
                 frequency,
                 amplitude,
                 phase,
-            } => {
-                ui.vertical(|ui| {
-                    ui.label(egui::RichText::new("Sawtooth").strong());
-                    ui.add(
-                        egui::DragValue::new(frequency)
-                            .clamp_range(1e-2..=f64::MAX)
-                            .prefix("f: ")
-                            .suffix(" Hz"),
-                    );
-                    ui.add(
-                        egui::DragValue::new(amplitude)
-                            .clamp_range(0.0..=f64::MAX)
-                            .prefix("A: "),
-                    );
-                    ui.add(egui::Slider::new(phase, 0.0..=1.0).prefix("φ: "));
-                });
-            }
+            } => Self::show_control(ui, "Sawtooth", frequency, amplitude, phase),
         };
     }
 }
