@@ -66,7 +66,13 @@ impl eframe::App for Main {
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 egui::warn_if_debug_build(ui);
-                ui.label(egui::RichText::new(format!("Version: git:{}", env!("GIT_HASH"))).small());
+                ui.hyperlink_to(
+                    egui::RichText::new(format!("Version: git:{}", env!("GIT_HASH"))).small(),
+                    format!(
+                        "https://github.com/spitfire05/egui-waves/commit/{}",
+                        env!("GIT_HASH")
+                    ),
+                );
             });
         });
 
