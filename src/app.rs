@@ -310,7 +310,7 @@ impl Component {
                     ui.label(egui::RichText::new("Sine").strong());
                     ui.add(
                         egui::DragValue::new(frequency)
-                            .clamp_range(f64::MIN_POSITIVE..=f64::MAX)
+                            .clamp_range(1e-2..=f64::MAX)
                             .prefix("f: ")
                             .suffix(" Hz"),
                     );
@@ -331,7 +331,7 @@ impl Component {
                     ui.label(egui::RichText::new("Square").strong());
                     ui.add(
                         egui::DragValue::new(frequency)
-                            .clamp_range(f64::MIN_POSITIVE..=f64::MAX)
+                            .clamp_range(1e-2..=f64::MAX)
                             .prefix("f: ")
                             .suffix(" Hz"),
                     );
@@ -352,7 +352,7 @@ impl Component {
                     ui.label(egui::RichText::new("Sawtooth").strong());
                     ui.add(
                         egui::DragValue::new(frequency)
-                            .clamp_range(f64::MIN_POSITIVE..=f64::MAX)
+                            .clamp_range(1e-2..=f64::MAX)
                             .prefix("f: ")
                             .suffix(" Hz"),
                     );
