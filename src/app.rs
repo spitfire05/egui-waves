@@ -1,5 +1,9 @@
 use rustfft::{num_complex::Complex, FftPlanner};
+use std::sync::Mutex;
 use wavegen::{sawtooth, sine, square, PeriodicFunction, Waveform};
+
+static FFT_PLANNER: once_cell::sync::Lazy<Mutex<FftPlanner<f64>>> =
+    once_cell::sync::Lazy::new(|| Mutex::new(FftPlanner::new()));
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -172,9 +176,10 @@ impl eframe::App for Main {
 
             ui.heading("Spectrum");
 
-            let mut planner: once_cell::unsync::Lazy<FftPlanner<f64>> =
-                once_cell::unsync::Lazy::new(FftPlanner::new);
-            let fft = planner.plan_fft_forward(*n_samples as usize);
+            let fft = FFT_PLANNER
+                .lock()
+                .expect("Could not get lock on FFT_PLANNER")
+                .plan_fft_forward(*n_samples as usize);
 
             let mut buffer: Vec<_> = waveform
                 .into_iter()
