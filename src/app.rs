@@ -174,7 +174,8 @@ impl eframe::App for Main {
 
             ui.heading("Spectrum");
 
-            let mut planner = FftPlanner::new();
+            let mut planner: once_cell::unsync::Lazy<FftPlanner<f64>> =
+                once_cell::unsync::Lazy::new(FftPlanner::new);
             let fft = planner.plan_fft_forward(*n_samples as usize);
 
             let mut buffer: Vec<_> = waveform
