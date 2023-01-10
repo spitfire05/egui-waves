@@ -1,5 +1,5 @@
 use rustfft::{num_complex::Complex, FftPlanner};
-use std::{collections::VecDeque, sync::Mutex};
+use std::sync::Mutex;
 use wavegen::{sawtooth, sine, square, PeriodicFunction, Waveform};
 
 static FFT_PLANNER: once_cell::sync::Lazy<Mutex<FftPlanner<f64>>> =
@@ -166,10 +166,7 @@ impl eframe::App for Main {
                         .outer_margin(10.0)
                         .show(ui, |ui| {
                             ui.vertical(|ui| {
-                                c.show(ui);
-                                if ui.button("❌ Remove").clicked() {
-                                    c.enabled = false;
-                                }
+                                c.show(ui, *sample_rate);
                             });
                         });
                 }
@@ -253,7 +250,7 @@ struct ComponentWrapper {
 }
 
 impl ComponentWrapper {
-    pub fn show(&mut self, ui: &mut egui::Ui) {
+    pub fn show(&mut self, ui: &mut egui::Ui, sampling_frequency: f64) {
         ui.horizontal(|ui| {
             let label = ui.label("Name: ");
             ui.text_edit_singleline(&mut self.name)
@@ -262,6 +259,15 @@ impl ComponentWrapper {
         });
         ui.vertical(|ui| {
             self.inner.show(ui);
+            if self.inner.frequency() * 2.56 > sampling_frequency {
+                ui.label(
+                    egui::RichText::new("⚠ Above Nyquist frequency ⚠")
+                        .color(ui.visuals().warn_fg_color),
+                );
+            }
+            if ui.button("❌ Remove").clicked() {
+                self.enabled = false;
+            }
         });
     }
 }
