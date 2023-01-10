@@ -83,6 +83,9 @@ impl eframe::App for Main {
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 egui::warn_if_debug_build(ui);
+                if cfg!(debug_assertions) {
+                    ui.separator();
+                }
                 ui.hyperlink_to(
                     egui::RichText::new(format!("Version: git:{}", env!("GIT_HASH"))).small(),
                     format!(
@@ -90,7 +93,9 @@ impl eframe::App for Main {
                         env!("GIT_HASH")
                     ),
                 );
+                ui.separator();
                 ui.label(egui::RichText::new(format!("Total frames painted: {frames}")).small());
+                ui.separator();
                 ui.label(
                     egui::RichText::new(format!("Mean CPU usage: {:.2} ms", history.mean_ms()))
                         .small(),
@@ -137,20 +142,20 @@ impl eframe::App for Main {
                 });
             }
 
-            egui::Frame::none().show(ui, |ui| {
-                ui.heading("Settings");
-                ui.add(
-                    egui::DragValue::new(sample_rate)
-                        .clamp_range(f64::MIN_POSITIVE..=f64::MAX)
-                        .prefix("Sample rate: ")
-                        .suffix(" Hz"),
-                );
-                ui.add(
-                    egui::DragValue::new(n_samples)
-                        .clamp_range(usize::MIN..=usize::MAX)
-                        .prefix("N Samples: "),
-                );
-            })
+            ui.separator();
+
+            ui.heading("Settings");
+            ui.add(
+                egui::DragValue::new(sample_rate)
+                    .clamp_range(f64::MIN_POSITIVE..=f64::MAX)
+                    .prefix("Sample rate: ")
+                    .suffix(" Hz"),
+            );
+            ui.add(
+                egui::DragValue::new(n_samples)
+                    .clamp_range(usize::MIN..=usize::MAX)
+                    .prefix("N Samples: "),
+            );
         });
 
         egui::SidePanel::right("right_panel").show(ctx, |ui| {
@@ -190,7 +195,7 @@ impl eframe::App for Main {
                 .collect();
             let line = egui::plot::Line::new(points);
             egui::plot::Plot::new("wf_plot")
-                .view_aspect(3.0)
+                .view_aspect(4.0)
                 .show(ui, |plot_ui| plot_ui.line(line));
 
             ui.heading("Spectrum");
