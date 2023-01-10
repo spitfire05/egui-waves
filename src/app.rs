@@ -367,44 +367,38 @@ impl Component {
 }
 
 const HISTORY_SIZE: usize = 1024;
+const MAX_HISTORY_AGE: f32 = 1.0;
 
 struct History {
-    frame_times: VecDeque<f32>,
+    frame_times: egui::util::History<f32>,
 }
 
 impl History {
     pub fn new() -> Self {
         History {
-            frame_times: VecDeque::with_capacity(HISTORY_SIZE),
+            frame_times: egui::util::History::new(0..HISTORY_SIZE, MAX_HISTORY_AGE),
         }
     }
 
     pub fn mean_ms(&self) -> f32 {
-        let n = self.frame_times.len();
-
-        #[allow(clippy::cast_precision_loss)]
-        self.frame_times
-            .iter()
-            .map(|x| *x * 1000.0)
-            .fold(0.0, |acc, x| (acc + x / (n as f32)))
+        self.frame_times.average().unwrap_or_default() * 1000.0
     }
 
     pub fn on_new_frame(&mut self, now: f64, previous_frame_time: Option<f32>) {
-        while self.frame_times.len() >= HISTORY_SIZE {
-            self.frame_times.pop_front();
+        let previous_frame_time = previous_frame_time.unwrap_or_default();
+        if let Some(latest) = self.frame_times.latest_mut() {
+            *latest = previous_frame_time; // rewrite history now that we know
         }
-
-        if let Some(t) = previous_frame_time {
-            self.frame_times.push_back(t);
-        }
+        self.frame_times.add(now, previous_frame_time); // projected
     }
 
     pub fn show_plot(&self, ui: &mut egui::Ui) {
+        #[allow(clippy::cast_precision_loss)]
         let points: egui::plot::PlotPoints = self
             .frame_times
             .iter()
             .enumerate()
-            .map(|(i, x)| [i as f64, (*x as f64) * 1000.0])
+            .map(|(i, (_, x))| [i as f64, f64::from(x) * 1000.0])
             .collect();
         let line = egui::plot::Line::new(points);
         egui::plot::Plot::new("frame_history_plot")
