@@ -1,5 +1,5 @@
 use rustfft::{num_complex::Complex, FftPlanner};
-use std::sync::Mutex;
+use std::{collections::VecDeque, sync::Mutex};
 use wavegen::{sawtooth, sine, square, PeriodicFunction, Waveform};
 
 static FFT_PLANNER: once_cell::sync::Lazy<Mutex<FftPlanner<f64>>> =
@@ -12,6 +12,12 @@ pub struct Main {
     sample_rate: f64,
     n_samples: u16,
     components: Vec<ComponentWrapper>,
+
+    #[serde(skip)]
+    frames: u128,
+
+    #[serde(skip)]
+    history: History,
 }
 
 impl Default for Main {
@@ -20,6 +26,8 @@ impl Default for Main {
             sample_rate: 3000.0,
             n_samples: 1000,
             components: vec![],
+            frames: 0,
+            history: History::new(),
         }
     }
 }
@@ -53,7 +61,12 @@ impl eframe::App for Main {
             sample_rate,
             n_samples,
             components,
+            frames,
+            history,
         } = self;
+
+        let time_start = std::time::Instant::now();
+        *frames += 1;
 
         #[cfg(not(target_arch = "wasm32"))] // no File->Quit on web pages!
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -77,6 +90,12 @@ impl eframe::App for Main {
                         env!("GIT_HASH")
                     ),
                 );
+                ui.label(egui::RichText::new(format!("Total frames painted: {frames}")).small());
+                ui.label(
+                    egui::RichText::new(format!("Mean frame draw time: {:.2} ms", history.mean()))
+                        .small(),
+                )
+                .on_hover_ui(|ui| history.show_plot(ui));
             });
         });
 
@@ -218,6 +237,8 @@ impl eframe::App for Main {
         while let Some(i) = components.iter().position(|c| !c.enabled) {
             components.remove(i);
         }
+
+        history.record_time(time_start.elapsed());
     }
 }
 
@@ -344,5 +365,51 @@ impl Component {
                 phase,
             } => Self::show_control(ui, "Sawtooth", frequency, amplitude, phase),
         };
+    }
+}
+
+const HISTORY_SIZE: usize = 1024;
+
+struct History {
+    frame_times: VecDeque<u16>,
+}
+
+impl History {
+    pub fn new() -> Self {
+        History {
+            frame_times: VecDeque::with_capacity(HISTORY_SIZE),
+        }
+    }
+
+    pub fn mean(&self) -> f64 {
+        let n = self.frame_times.len();
+
+        #[allow(clippy::cast_precision_loss)]
+        self.frame_times
+            .iter()
+            .fold(0.0, |acc, x| (acc + f64::from(*x) / (n as f64)))
+    }
+
+    pub fn record_time(&mut self, d: std::time::Duration) {
+        while self.frame_times.len() >= HISTORY_SIZE {
+            self.frame_times.pop_front();
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        self.frame_times.push_back(d.as_millis() as u16);
+    }
+
+    pub fn show_plot(&self, ui: &mut egui::Ui) {
+        #[allow(clippy::cast_lossless)]
+        #[allow(clippy::cast_precision_loss)]
+        let points: egui::plot::PlotPoints = self
+            .frame_times
+            .iter()
+            .enumerate()
+            .map(|(i, x)| [i as f64, *x as f64])
+            .collect();
+        let line = egui::plot::Line::new(points);
+        egui::plot::Plot::new("frame_history_plot")
+            .view_aspect(3.0)
+            .show(ui, |plot_ui| plot_ui.line(line));
     }
 }
