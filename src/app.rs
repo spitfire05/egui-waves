@@ -65,7 +65,7 @@ impl eframe::App for Main {
             history,
         } = self;
 
-        let time_start = std::time::Instant::now();
+        history.on_new_frame(ctx.input().time, frame.info().cpu_usage);
         *frames += 1;
 
         #[cfg(not(target_arch = "wasm32"))] // no File->Quit on web pages!
@@ -92,7 +92,7 @@ impl eframe::App for Main {
                 );
                 ui.label(egui::RichText::new(format!("Total frames painted: {frames}")).small());
                 ui.label(
-                    egui::RichText::new(format!("Mean frame draw time: {:.2} ms", history.mean()))
+                    egui::RichText::new(format!("Mean CPU usage: {:.2} ms", history.mean_ms()))
                         .small(),
                 )
                 .on_hover_ui(|ui| history.show_plot(ui));
@@ -237,8 +237,6 @@ impl eframe::App for Main {
         while let Some(i) = components.iter().position(|c| !c.enabled) {
             components.remove(i);
         }
-
-        history.record_time(time_start.elapsed());
     }
 }
 
@@ -371,7 +369,7 @@ impl Component {
 const HISTORY_SIZE: usize = 1024;
 
 struct History {
-    frame_times: VecDeque<u16>,
+    frame_times: VecDeque<f32>,
 }
 
 impl History {
@@ -381,31 +379,32 @@ impl History {
         }
     }
 
-    pub fn mean(&self) -> f64 {
+    pub fn mean_ms(&self) -> f32 {
         let n = self.frame_times.len();
 
         #[allow(clippy::cast_precision_loss)]
         self.frame_times
             .iter()
-            .fold(0.0, |acc, x| (acc + f64::from(*x) / (n as f64)))
+            .map(|x| *x * 1000.0)
+            .fold(0.0, |acc, x| (acc + x / (n as f32)))
     }
 
-    pub fn record_time(&mut self, d: std::time::Duration) {
+    pub fn on_new_frame(&mut self, now: f64, previous_frame_time: Option<f32>) {
         while self.frame_times.len() >= HISTORY_SIZE {
             self.frame_times.pop_front();
         }
-        #[allow(clippy::cast_possible_truncation)]
-        self.frame_times.push_back(d.as_millis() as u16);
+
+        if let Some(t) = previous_frame_time {
+            self.frame_times.push_back(t);
+        }
     }
 
     pub fn show_plot(&self, ui: &mut egui::Ui) {
-        #[allow(clippy::cast_lossless)]
-        #[allow(clippy::cast_precision_loss)]
         let points: egui::plot::PlotPoints = self
             .frame_times
             .iter()
             .enumerate()
-            .map(|(i, x)| [i as f64, *x as f64])
+            .map(|(i, x)| [i as f64, (*x as f64) * 1000.0])
             .collect();
         let line = egui::plot::Line::new(points);
         egui::plot::Plot::new("frame_history_plot")
