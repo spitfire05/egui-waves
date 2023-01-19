@@ -1,3 +1,5 @@
+use crate::util::{Cache, PlotData};
+use egui::{plot, util::cache};
 use rustfft::{num_complex::Complex, FftPlanner};
 use std::sync::Mutex;
 use wavegen::{sawtooth, sine, square, PeriodicFunction, Waveform};
@@ -17,6 +19,9 @@ pub struct Main {
 
     #[serde(skip)]
     history: History,
+
+    #[serde(skip)]
+    plot_data_cache: Cache<PlotData>,
 }
 
 impl Default for Main {
@@ -26,6 +31,7 @@ impl Default for Main {
             n_samples: 1000,
             components: vec![],
             history: History::new(),
+            plot_data_cache: Default::default(),
         }
     }
 }
@@ -60,6 +66,7 @@ impl eframe::App for Main {
             n_samples,
             components,
             history,
+            plot_data_cache,
         } = self;
 
         history.on_new_frame(ctx.input().time, frame.info().cpu_usage);
@@ -115,6 +122,7 @@ impl eframe::App for Main {
                     name: "Sine".to_string(),
                     enabled: true,
                 });
+                plot_data_cache.invalidate();
             }
 
             if ui.button("Square").clicked() {
@@ -127,6 +135,7 @@ impl eframe::App for Main {
                     name: "Square".to_string(),
                     enabled: true,
                 });
+                plot_data_cache.invalidate();
             }
 
             if ui.button("Sawtooth").clicked() {
@@ -139,22 +148,33 @@ impl eframe::App for Main {
                     name: "Sawtooth".to_string(),
                     enabled: true,
                 });
+                plot_data_cache.invalidate();
             }
 
             ui.separator();
 
             ui.heading("Settings");
-            ui.add(
-                egui::DragValue::new(sample_rate)
-                    .clamp_range(f64::MIN_POSITIVE..=f64::MAX)
-                    .prefix("Sample rate: ")
-                    .suffix(" Hz"),
-            );
-            ui.add(
-                egui::DragValue::new(n_samples)
-                    .clamp_range(usize::MIN..=usize::MAX)
-                    .prefix("N Samples: "),
-            );
+            if ui
+                .add(
+                    egui::DragValue::new(sample_rate)
+                        .clamp_range(f64::MIN_POSITIVE..=f64::MAX)
+                        .prefix("Sample rate: ")
+                        .suffix(" Hz"),
+                )
+                .changed()
+            {
+                plot_data_cache.invalidate();
+            }
+            if ui
+                .add(
+                    egui::DragValue::new(n_samples)
+                        .clamp_range(usize::MIN..=usize::MAX)
+                        .prefix("N Samples: "),
+                )
+                .changed()
+            {
+                plot_data_cache.invalidate();
+            }
         });
 
         egui::SidePanel::right("right_panel").show(ctx, |ui| {
@@ -165,7 +185,7 @@ impl eframe::App for Main {
                         .outer_margin(10.0)
                         .show(ui, |ui| {
                             ui.vertical(|ui| {
-                                c.show(ui, *sample_rate);
+                                c.show(ui, *sample_rate, plot_data_cache);
                             });
                         });
                 }
@@ -177,18 +197,54 @@ impl eframe::App for Main {
 
             ui.heading("Plot");
 
-            let waveform = Waveform::<f64, f64>::with_components(
-                *sample_rate,
-                components.iter().map(|c| c.inner.build()).collect(),
-            );
-
-            #[allow(clippy::cast_precision_loss)]
-            let points: egui::plot::PlotPoints = waveform
-                .into_iter()
-                .enumerate()
-                .map(|(i, x)| [i as f64 / *sample_rate, x])
+            let pd = plot_data_cache.get_or_init(|| {
+                let waveform: Vec<_> = Waveform::<f64, f64>::with_components(
+                    *sample_rate,
+                    components.iter().map(|c| c.inner.build()).collect(),
+                )
+                .iter()
                 .take(*n_samples as usize)
                 .collect();
+
+                PlotData {
+                    waveform: {
+                        waveform
+                            .iter()
+                            .enumerate()
+                            .map(|(i, x)| [i as f64 / *sample_rate, *x])
+                            .take(*n_samples as usize)
+                            .collect()
+                    },
+                    spectrum: {
+                        let fmax = *sample_rate / FMAX_SCALE;
+                        let spectrum_resolution = *sample_rate / f64::from(*n_samples);
+                        let mut buffer: Vec<_> = waveform
+                            .into_iter()
+                            .map(|s| Complex::new(s, 0.0))
+                            .take(*n_samples as usize)
+                            .collect();
+                        let fft = FFT_PLANNER
+                            .lock()
+                            .expect("Could not get lock on FFT_PLANNER")
+                            .plan_fft_forward(*n_samples as usize);
+                        fft.process(&mut buffer);
+                        buffer
+                            .iter()
+                            .enumerate()
+                            .map(|(i, c)| {
+                                [
+                                    i as f64 * spectrum_resolution,
+                                    c.norm() / f64::from(*n_samples),
+                                ]
+                            })
+                            .take_while(|[f, _]| *f < fmax)
+                            .collect()
+                    },
+                }
+            });
+
+            #[allow(clippy::cast_precision_loss)]
+            let points = egui::plot::PlotPoints::from(pd.waveform.clone());
             let line = egui::plot::Line::new(points);
             egui::plot::Plot::new("wf_plot")
                 .view_aspect(4.0)
@@ -196,31 +252,8 @@ impl eframe::App for Main {
 
             ui.heading("Spectrum");
 
-            let fft = FFT_PLANNER
-                .lock()
-                .expect("Could not get lock on FFT_PLANNER")
-                .plan_fft_forward(*n_samples as usize);
-
-            let mut buffer: Vec<_> = waveform
-                .into_iter()
-                .map(|s| Complex::new(s, 0.0))
-                .take(*n_samples as usize)
-                .collect();
-            fft.process(&mut buffer);
-            let fmax = *sample_rate / FMAX_SCALE;
-            let spectrum_resolution = *sample_rate / f64::from(*n_samples);
             #[allow(clippy::cast_precision_loss)]
-            let points: egui::plot::PlotPoints = buffer
-                .iter()
-                .enumerate()
-                .map(|(i, c)| {
-                    [
-                        i as f64 * spectrum_resolution,
-                        c.norm() / f64::from(*n_samples),
-                    ]
-                })
-                .take_while(|[f, _]| *f < fmax)
-                .collect();
+            let points = egui::plot::PlotPoints::from(pd.spectrum.clone());
             let line = egui::plot::Line::new(points);
             egui::plot::Plot::new("spectrum_plot")
                 .view_aspect(4.0)
@@ -237,6 +270,7 @@ impl eframe::App for Main {
 
         while let Some(i) = components.iter().position(|c| !c.enabled) {
             components.remove(i);
+            plot_data_cache.invalidate();
         }
     }
 }
@@ -249,7 +283,7 @@ struct ComponentWrapper {
 }
 
 impl ComponentWrapper {
-    pub fn show(&mut self, ui: &mut egui::Ui, sampling_frequency: f64) {
+    pub fn show<T>(&mut self, ui: &mut egui::Ui, sampling_frequency: f64, cache: &mut Cache<T>) {
         ui.horizontal(|ui| {
             let label = ui.label("Name: ");
             ui.text_edit_singleline(&mut self.name)
@@ -257,7 +291,7 @@ impl ComponentWrapper {
                                                       This is currently only used for spectrum marker");
         });
         ui.vertical(|ui| {
-            self.inner.show(ui);
+            self.inner.show(ui, cache);
             if self.inner.frequency() * FMAX_SCALE > sampling_frequency {
                 ui.label(
                     egui::RichText::new("⚠ Above Nyquist frequency ⚠")
@@ -331,47 +365,57 @@ impl Component {
         }
     }
 
-    fn show_control(
+    fn show_control<T>(
         ui: &mut egui::Ui,
         name: impl Into<String>,
         frequency: &mut f64,
         amplitude: &mut f64,
         phase: &mut f64,
+        cache: &mut Cache<T>,
     ) {
         ui.vertical(|ui| {
             ui.label(egui::RichText::new(name).strong());
-            ui.add(
-                egui::DragValue::new(frequency)
-                    .clamp_range(1e-2..=f64::MAX)
-                    .prefix("f: ")
-                    .suffix(" Hz"),
-            );
-            ui.add(
-                egui::DragValue::new(amplitude)
-                    .clamp_range(0.0..=f64::MAX)
-                    .prefix("A: "),
-            );
-            ui.add(egui::Slider::new(phase, 0.0..=1.0).prefix("φ: "));
+            if ui
+                .add(
+                    egui::DragValue::new(frequency)
+                        .clamp_range(1e-2..=f64::MAX)
+                        .prefix("f: ")
+                        .suffix(" Hz"),
+                )
+                .changed()
+                || ui
+                    .add(
+                        egui::DragValue::new(amplitude)
+                            .clamp_range(0.0..=f64::MAX)
+                            .prefix("A: "),
+                    )
+                    .changed()
+                || ui
+                    .add(egui::Slider::new(phase, 0.0..=1.0).prefix("φ: "))
+                    .changed()
+            {
+                cache.invalidate();
+            }
         });
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui) {
+    pub fn show<T>(&mut self, ui: &mut egui::Ui, cache: &mut Cache<T>) {
         match self {
             Component::Sine {
                 frequency,
                 amplitude,
                 phase,
-            } => Self::show_control(ui, "Sine", frequency, amplitude, phase),
+            } => Self::show_control(ui, "Sine", frequency, amplitude, phase, cache),
             Component::Square {
                 frequency,
                 amplitude,
                 phase,
-            } => Self::show_control(ui, "Square", frequency, amplitude, phase),
+            } => Self::show_control(ui, "Square", frequency, amplitude, phase, cache),
             Component::Sawtooth {
                 frequency,
                 amplitude,
                 phase,
-            } => Self::show_control(ui, "Sawtooth", frequency, amplitude, phase),
+            } => Self::show_control(ui, "Sawtooth", frequency, amplitude, phase, cache),
         };
     }
 }
