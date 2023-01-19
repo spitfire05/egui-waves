@@ -2,6 +2,8 @@ use rustfft::{num_complex::Complex, FftPlanner};
 use std::sync::Mutex;
 use wavegen::{sawtooth, sine, square, PeriodicFunction, Waveform};
 
+const FMAX_SCALE: f64 = 2.56;
+
 static FFT_PLANNER: once_cell::sync::Lazy<Mutex<FftPlanner<f64>>> =
     once_cell::sync::Lazy::new(|| Mutex::new(FftPlanner::new()));
 
@@ -14,9 +16,6 @@ pub struct Main {
     components: Vec<ComponentWrapper>,
 
     #[serde(skip)]
-    frames: u128,
-
-    #[serde(skip)]
     history: History,
 }
 
@@ -26,7 +25,6 @@ impl Default for Main {
             sample_rate: 3000.0,
             n_samples: 1000,
             components: vec![],
-            frames: 0,
             history: History::new(),
         }
     }
@@ -61,12 +59,10 @@ impl eframe::App for Main {
             sample_rate,
             n_samples,
             components,
-            frames,
             history,
         } = self;
 
         history.on_new_frame(ctx.input().time, frame.info().cpu_usage);
-        *frames += 1;
 
         #[cfg(not(target_arch = "wasm32"))] // no File->Quit on web pages!
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -94,7 +90,10 @@ impl eframe::App for Main {
                     ),
                 );
                 ui.separator();
-                ui.label(egui::RichText::new(format!("Total frames painted: {frames}")).small());
+                ui.label(
+                    egui::RichText::new(format!("Total frames painted: {}", history.total()))
+                        .small(),
+                );
                 ui.separator();
                 ui.label(
                     egui::RichText::new(format!("Mean CPU usage: {:.2} ms", history.mean_ms()))
@@ -208,7 +207,7 @@ impl eframe::App for Main {
                 .take(*n_samples as usize)
                 .collect();
             fft.process(&mut buffer);
-            let fmax = *sample_rate / 2.56;
+            let fmax = *sample_rate / FMAX_SCALE;
             let spectrum_resolution = *sample_rate / f64::from(*n_samples);
             #[allow(clippy::cast_precision_loss)]
             let points: egui::plot::PlotPoints = buffer
@@ -259,7 +258,7 @@ impl ComponentWrapper {
         });
         ui.vertical(|ui| {
             self.inner.show(ui);
-            if self.inner.frequency() * 2.56 > sampling_frequency {
+            if self.inner.frequency() * FMAX_SCALE > sampling_frequency {
                 ui.label(
                     egui::RichText::new("⚠ Above Nyquist frequency ⚠")
                         .color(ui.visuals().warn_fg_color),
@@ -389,6 +388,10 @@ impl History {
         History {
             frame_times: egui::util::History::new(0..HISTORY_SIZE, MAX_HISTORY_AGE),
         }
+    }
+
+    pub fn total(&self) -> u64 {
+        self.frame_times.total_count()
     }
 
     pub fn mean_ms(&self) -> f32 {
