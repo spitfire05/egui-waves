@@ -212,17 +212,13 @@ impl eframe::App for Main {
                             .iter()
                             .enumerate()
                             .map(|(i, x)| [i as f64 / *sample_rate, *x])
-                            .take(*n_samples as usize)
                             .collect()
                     },
                     spectrum: {
                         let fmax = *sample_rate / FMAX_SCALE;
                         let spectrum_resolution = *sample_rate / f64::from(*n_samples);
-                        let mut buffer: Vec<_> = waveform
-                            .into_iter()
-                            .map(|s| Complex::new(s, 0.0))
-                            .take(*n_samples as usize)
-                            .collect();
+                        let mut buffer: Vec<_> =
+                            waveform.into_iter().map(|s| Complex::new(s, 0.0)).collect();
                         let fft = FFT_PLANNER
                             .lock()
                             .expect("Could not get lock on FFT_PLANNER")
