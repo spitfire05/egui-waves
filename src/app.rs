@@ -1,5 +1,4 @@
 use crate::util::{Cache, PlotData};
-use egui::{plot, util::cache};
 use rustfft::{num_complex::Complex, FftPlanner};
 use std::sync::Mutex;
 use wavegen::{sawtooth, sine, square, PeriodicFunction, Waveform};
@@ -31,7 +30,7 @@ impl Default for Main {
             n_samples: 1000,
             components: vec![],
             history: History::new(),
-            plot_data_cache: Default::default(),
+            plot_data_cache: Cache::default(),
         }
     }
 }

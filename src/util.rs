@@ -13,7 +13,7 @@ impl<T> Cache<T> {
     }
 
     pub fn invalidate(&mut self) {
-        self.data = None
+        self.data = None;
     }
 
     pub fn is_valid(&self) -> bool {
@@ -24,21 +24,13 @@ impl<T> Cache<T> {
 impl<T> Default for Cache<T> {
     fn default() -> Self {
         Self {
-            data: Default::default(),
+            data: Option::default(),
         }
     }
 }
 
+#[derive(Default)]
 pub struct PlotData {
     pub waveform: Vec<[f64; 2]>,
     pub spectrum: Vec<[f64; 2]>,
-}
-
-impl Default for PlotData {
-    fn default() -> Self {
-        Self {
-            waveform: Default::default(),
-            spectrum: Default::default(),
-        }
-    }
 }
