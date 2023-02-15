@@ -1,8 +1,8 @@
 FROM rust:1.67 as builder
+RUN rustup target add wasm32-unknown-unknown
 RUN cargo install --locked trunk
 ADD . ./
 RUN trunk build --release
-
 
 
 FROM pierrezemb/gostatic
